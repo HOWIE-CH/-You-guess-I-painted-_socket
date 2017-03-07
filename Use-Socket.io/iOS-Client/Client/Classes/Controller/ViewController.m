@@ -86,8 +86,8 @@
 - (SocketIOClient *)clientSocket {
     if (!_clientSocket) {
        
-        NSURL *url = [NSURL URLWithString:@"http://webapp.howiech.com"];
-       
+//        NSURL *url = [NSURL URLWithString:@"http://webapp.howiech.com"];
+        NSURL *url = [NSURL URLWithString:@"http://127.0.0.1:5000"];
         _clientSocket = [[SocketIOClient alloc]initWithSocketURL:url
                                                           config:@{@"log": @YES, @"forcePolling": @YES}];
         
@@ -260,16 +260,10 @@
                                    @"width" : @(self.drawView.width),
                                    @"color" : @(colorNum),
                                    @"screenW": @([UIScreen mainScreen].bounds.size.width),
-                                   @"screenH": @([UIScreen mainScreen].bounds.size.height)
                                    };
     
-    NSData *pathData = [NSJSONSerialization
-                        dataWithJSONObject:pathDataDict
-                        options:NSJSONWritingPrettyPrinted
-                        error:nil];
-    
-    
-    [self.clientSocket emit:@"path" with:@[pathData]];
+    // 直接发送
+    [self.clientSocket emit:@"path" with:@[pathDataDict]];
 }
 
 /*!
@@ -282,9 +276,9 @@
     if (self.chatTextField.text == nil || [self.chatTextField.text isEqualToString:@""]) {
         self.chatTextField.text = @"hello";
     }
-    NSData *chatData = [self.chatTextField.text dataUsingEncoding:NSUTF8StringEncoding];
-    
-    [self.clientSocket emit:@"text" with:@[chatData]];
+    // 直接发送字符串
+    [self.clientSocket emit:@"text"
+                       with:@[self.chatTextField.text]];
     
     self.chatTextField.text = @"";
     
@@ -337,28 +331,25 @@
 }
 
 
-// path
-
+/*!
+ @method  收到 path
+ @abstract 收到 path，数据处理
+ */
 - (void)receivePath {
     
     [self.clientSocket on:@"path" callback:^(NSArray * array, SocketAckEmitter * emitter) {
         
-        NSData *data = array.firstObject;
-        
-        NSDictionary *tmpDict = [NSJSONSerialization JSONObjectWithData:data
-                                                                options:kNilOptions
-                                                                  error:nil];
-        
+        NSDictionary *data = array.firstObject;
+
         // 1、接受坐标点
-        NSInteger w = [tmpDict[@"screenW"] integerValue];
-        NSInteger h = [tmpDict[@"screenH"] integerValue];
-        CGFloat scaleW = [UIScreen mainScreen].bounds.size.width / w;
-        CGFloat scaleH = [UIScreen mainScreen].bounds.size.height / h;
+        NSInteger w = [data[@"screenW"] integerValue];
+        CGFloat scale = [UIScreen mainScreen].bounds.size.width / w;
+        
         // 处理点
-        NSArray *pointDict = tmpDict[@"path"];
+        NSArray *pointDict = data[@"path"];
         DIYBezierPath *path = [[DIYBezierPath alloc]init];
         for (NSDictionary *tmpDict in pointDict) {
-            CGPoint point = CGPointMake([tmpDict[@"x"] floatValue] * scaleW, [tmpDict[@"y"] floatValue] * scaleH);
+            CGPoint point = CGPointMake([tmpDict[@"x"] floatValue] * scale, [tmpDict[@"y"] floatValue] * scale);
             NSInteger index = [pointDict indexOfObject:tmpDict];
             if (index == 0) {
                 [path moveToPoint:point];
@@ -367,7 +358,7 @@
             }
             
         }
-        switch ([tmpDict[@"color"] integerValue]) {
+        switch ([data[@"color"] integerValue]) {
             case 0:
                 self.drawView.color = [UIColor blackColor];
                 break;
@@ -384,7 +375,7 @@
             default:
                 break;
         }
-        self.drawView.width = [tmpDict[@"width"] floatValue];
+        self.drawView.width = [data[@"width"] floatValue];
         self.drawView.currentPath = path;
         self.drawView.currentPath.pathColor = self.drawView.color;
         self.drawView.currentPath.lineWidth = self.drawView.width;
@@ -396,43 +387,38 @@
     
 }
 
-// img
+/*!
+ @method  收到 img
+ @abstract 收到 img，数据处理
+ */
 - (void)receiveImg {
     
     [self.clientSocket on:@"img" callback:^(NSArray * array, SocketAckEmitter * emitter) {
         
         NSString *data = array.firstObject;
         
-        //        [self.socketReadData appendString:data];
-        
-        //        if ([self.socketReadData hasSuffix:@"$"]) {
-        
-        //            NSString *imgString = [self.socketReadData substringToIndex:self.socketReadData.length];
-        
         NSData *imgData = [[NSData alloc]initWithBase64EncodedString:data options:NSDataBase64DecodingIgnoreUnknownCharacters];
         self.drawView.drawImg = [UIImage imageWithData:imgData];
         [self.drawView setNeedsDisplay];
-            // 拼完图片 恢复默认
-//            self.socketReadData = nil;
-//        }
+        // 不需要拼接图片数据
     }];
     
 }
-// text
+/*!
+ @method  收到 text
+ @abstract 收到 text，数据处理
+ */
 - (void)receiveText {
     
     [self.clientSocket on:@"text" callback:^(NSArray * array, SocketAckEmitter * emitter) {
         
+        NSLog(@"%@", array);
+        NSString *data = array.firstObject;
+
+   
+        [self.chatArray addObject:data];
         
-        NSData *data = array.firstObject;
-        NSString *tmpStr = [[NSString alloc]initWithData:data
-                                                encoding:NSUTF8StringEncoding];
-        
-        [self.chatArray addObject:tmpStr];
         [self.tableView reloadData];
-        
-        
-        
         
     }];
     

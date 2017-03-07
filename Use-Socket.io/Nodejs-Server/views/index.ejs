@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<title>socket.io</title>
+	<style type="text/css">
+		.plat {
+			background-color: linen;
+			margin: 33px 33px;
+			display: flex;
+			flex-direction: row;
+			justify-content: flex-start;
+			align-items: stretch;
+		}
+		
+		.pic {
+			/*background-color: linen;*/
+			width: 50%;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-start;
+			align-items: center;
+		}
+		
+		.chat {
+			width: 50%;
+			/*background-color: lightcyan;*/
+			align-self: flex-end;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-start;
+			align-items: center;
+		}
+		
+		#form {
+
+			width: 400px;
+			display: flex;
+			flex-direction: row;
+			justify-content: flex-start;
+		}
+		#form input {
+			width: 75%;
+		}
+		#form button {
+			width: 25%;
+		}
+		canvas {
+			border: 1px solid #000;
+		}
+		
+		.liebiao {
+			width: 400px;
+		}
+		
+		.caozuo {
+			background-color: #ccc;
+			width: 400px;
+			height: 35px;
+			display: flex;
+			flex-direction: row;
+			justify-content: space-between;
+		}
+		
+		.caozuo input {
+			width: 75%;
+			height: 80%;
+			line-height: 35px;
+			font-size: 10px;
+		}
+		
+		.caozuo div {
+			width: 25%;
+			line-height: 35px;
+			text-align: center;
+		}
+	</style>
+</head>
+
+<body>
+	<h3 style="text-align: center">socket.io demo</h3>
+	<div class="plat">
+		<div class="pic">
+			<form id="form">
+				<input type="file" name="image" id="fileInput"></input>
+				<button type="button" id="selImg">传送</button>
+			</form>
+			<canvas width="400" height="400" id="canvas"></canvas>
+		</div>
+		<div class="chat">
+			<div id="shuoshuo">
+				<ul class="liebiao">
+				</ul>
+			</div>
+			<div class="caozuo">
+				<input type="text" id="neirong"></input>
+				<div>回车键发送</div>
+			</div>
+		</div>
+	</div>
+
+
+	<script type="text/javascript" src="/jquery-1.11.3.min.js"></script>
+	<script type="text/javascript" src="/socket.io/socket.io.js"></script>
+	<script type="text/javascript" src="/jquery.base64.min.js"></script>
+	<script type="text/javascript" src="/jquery.form.js"></script>
+	<script type="text/javascript">
+		// canvas 绘图
+		// 拿到 canvas htmlElement
+		// var canvas = document.getElementById("canvas");
+		var canvas = $("#canvas").get(0);
+		// 创建上下文 
+		var ctx = canvas.getContext("2d");
+		var colorArray = ["black", "red", "blue", "green"];
+		// socket
+		var socket = io();
+
+		// 鼠标画图
+		canvas.onmousedown = function (e) {
+			// 开始画
+			ctx.beginPath();
+			// ctx 属性设置
+			ctx.lineWidth = 3;
+			ctx.lineCap = "round";
+			ctx.lineJoin = "round";
+			let randomNum = parseInt(Math.random() * colorArray.length);
+			var mycolor = colorArray[randomNum];
+			ctx.strokeStyle = mycolor;
+			// tmp 为装所有坐标点的数组
+			var tmp = [];
+			var e = e || window.event;
+			// 第一个坐标点
+			var point = {
+				x: e.clientX - canvas.offsetLeft,
+				y: e.clientY - canvas.offsetTop
+			}
+			ctx.moveTo(point.x, point.y);
+			tmp.push(point);
+
+			document.onmousemove = function (e) {
+				var e = e || window.event;
+				var point = {
+					x: e.clientX - canvas.offsetLeft,
+					y: e.clientY - canvas.offsetTop
+				}
+				ctx.lineTo(point.x, point.y);
+				tmp.push(point);
+				ctx.stroke();
+			};
+			document.onmouseup = function () {
+				document.onmousemove = null;
+				document.onmouseup = null;
+
+				// socket 发送path
+				var pathDataDict = {
+					path: tmp,
+					width: 3,
+					color: randomNum,
+					screenW: 400
+				}
+				socket.emit("path", pathDataDict);
+
+			};
+		};
+		// 发送 text
+		$("#neirong").keydown(function (e) {
+			if (e.keyCode == 13) {
+				//把文本框的内容上传：
+				socket.emit("text", $("#neirong").val());
+				$(this).val("");
+			}
+		});
+		// 发送图片， 需要先 form 提交（ajax post）图片到服务器，获取图片 src 后在展示到画布上并发送 base64
+		$("#selImg").click(function () {
+
+			// form 提交
+			$("#form").ajaxSubmit({
+				url: "http://127.0.0.1:5000",
+				type: "post",
+				dataType: 'json',
+				success: function (data) {
+					if (data.status == -1) {
+						alert("请选择图片发送！");
+						return;
+					} 
+					if (data.status == 1) {
+						alert("图片上传失败！");
+						return;
+					}
+
+					//  html Dom Element
+					let image = new Image();
+					image.src = "http://127.0.0.1:5000/upload/" + data.status;
+					image.onload = function () {
+						ctx.drawImage(image, 0, 0, 400, 400);
+						var base64Url = canvas.toDataURL("image/png");
+						let base64 = base64Url.toString()
+						console.log(base64.substring(22));
+						socket.emit("img", base64.substring(22));
+
+					};
+				},
+				error: function (data) {
+
+				}
+			});
+		});
+
+		// socket 监听
+		socket.on("connection", function (msg) {
+			alert("connected!");
+		});
+
+		socket.on("path", function (msg) {
+			console.log("path");
+			// 这里的 msg 就是 iOS 端里数组里装的对象，iOS 端 emit 需要外面套一个数组
+			let pathArray = msg.path;
+			let pathWidth = msg.width;
+			let colorNumber = msg.color;
+			let screenW = msg.screenW;
+			let screenH = msg.screenH;
+			ctx.beginPath();
+			// 坐标点转换
+			let scale = 400 / screenW;
+			for (var i = 0; i < pathArray.length; i++) {
+				var point = pathArray[i];
+				if (i == 0) {
+					ctx.moveTo(point.x * scale, point.y * scale);
+				} else {
+					ctx.lineTo(point.x * scale, point.y * scale);
+				}
+			}
+			ctx.lineWidth = pathWidth;
+			ctx.strokeStyle = colorArray[colorNumber];
+			ctx.stroke();
+		});
+		socket.on("text", function (msg) {
+			console.log("text");
+			$(".liebiao").append("<li><b>other say：" + msg + "</b></li>");
+		});
+		socket.on("img", function (msg) {
+			console.log("img");
+			// base64 可以直接用<img>展示出来 ，获取 img 标签对象，可画出来
+			$(".caozuo").append("<img id='tmpImg' width='0' height='0' src='data:image/png;base64," + msg + "'></img>");
+			ctx.drawImage($("#tmpImg").get(0), 0, 0, 400, 400);
+			$("#tmpImg").remove();
+		});
+	</script>
+</body>
+
+</html>
