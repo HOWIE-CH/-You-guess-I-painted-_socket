@@ -8,10 +8,10 @@ var path = require('path');
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
 
-//模板引擎
+// 模板引擎
 app.set("views", path.join(__dirname, "/views/"));
 app.set("view engine", "ejs");
-//静态服务
+// 静态服务
 app.use(express.static(path.join(__dirname, "/public/")));
 app.use("/upload", express.static(path.join(__dirname, "/upload/")));
 
